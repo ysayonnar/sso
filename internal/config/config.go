@@ -8,11 +8,13 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+type Server struct {
+	Port int    `yaml:"port"`
+	Host string `yaml:"host"`
+}
+
 type Config struct {
-	Server struct {
-		Port int    `yaml:"port"`
-		Host string `yaml:"host"`
-	} `yaml:"server"`
+	Server Server `yaml:"server"`
 }
 
 func Parse() (*Config, error) {
