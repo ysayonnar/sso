@@ -13,7 +13,7 @@ import (
 	"net/mail"
 )
 
-type RegistrationRequest struct {
+type AuthRequest struct {
 	Email    string `json:"email"`
 	Password string `json:"password"`
 }
@@ -22,7 +22,7 @@ type JwtResponse struct {
 	JwtToken string `json:"token"`
 }
 
-func (r *RegistrationRequest) Validate() error {
+func (r *AuthRequest) Validate() error {
 	if len(r.Password) < 8 || len(r.Password) > 30 {
 		return fmt.Errorf("passwod is too short or long")
 	}
@@ -52,7 +52,7 @@ func Registration(log *slog.Logger, storage *database.Storage) http.HandlerFunc 
 		}
 		defer r.Body.Close()
 
-		var req RegistrationRequest
+		var req AuthRequest
 		err = json.Unmarshal(body, &req)
 		if err != nil {
 			log.Error("json parsing error", logger.Error(fmt.Errorf("op: %s, err: %w", op, err)))
@@ -64,6 +64,7 @@ func Registration(log *slog.Logger, storage *database.Storage) http.HandlerFunc 
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			fmt.Fprintf(w, "%s", err.Error())
+			return
 		}
 
 		var count int
@@ -105,5 +106,71 @@ func Registration(log *slog.Logger, storage *database.Storage) http.HandlerFunc 
 
 		w.Header().Add("Content-type", "application/json")
 		fmt.Fprint(w, string(response))
+	}
+}
+
+func Login(log *slog.Logger, storage *database.Storage) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		const op = "handlers.Login"
+
+		if r.Method != "POST" {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			log.Error("body reading error", logger.Error(err))
+			return
+		}
+		defer r.Body.Close()
+
+		var req AuthRequest
+		err = json.Unmarshal(body, &req)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			log.Error("json parsing error", logger.Error(err))
+			return
+		}
+
+		err = req.Validate()
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprintf(w, "%s", err.Error())
+			return
+		}
+
+		var userId int
+		var email, passwordHash string
+		err = storage.Db.QueryRow("SELECT user_id, email, password_hash FROM users WHERE email = $1;", req.Email).Scan(&userId, &email, &passwordHash)
+		if err != nil || userId == 0 {
+			w.WriteHeader(http.StatusNotFound)
+			fmt.Fprintf(w, "user with such email was not found")
+			return
+		}
+
+		if !password.ComparePasswords(req.Password, passwordHash) {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprintf(w, "invalid password")
+			return
+		}
+
+		jwtToken, err := token.New(userId)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			log.Error("error while jwt token signing", logger.Error(err))
+			return
+		}
+
+		jsonResponse, err := json.Marshal(JwtResponse{JwtToken: jwtToken})
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			log.Error("error while marshiling json", logger.Error(err))
+			return
+		}
+
+		w.Header().Add("Content-type", "application/json")
+		fmt.Fprint(w, string(jsonResponse))
 	}
 }
