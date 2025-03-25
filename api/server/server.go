@@ -19,6 +19,7 @@ func New(cfg config.Server, logger *slog.Logger, storage *database.Storage) *htt
 
 	mux.HandleFunc("/registration", handlers.Registration(logger, storage))
 	mux.HandleFunc("/login", handlers.Login(logger, storage))
+	mux.HandleFunc("/auth", handlers.Auth(logger, storage))
 
 	return &http.Server{
 		Addr:         fmt.Sprintf("%s:%d", cfg.Host, cfg.Port),

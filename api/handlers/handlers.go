@@ -174,3 +174,27 @@ func Login(log *slog.Logger, storage *database.Storage) http.HandlerFunc {
 		fmt.Fprint(w, string(jsonResponse))
 	}
 }
+
+func Auth(log *slog.Logger, storage *database.Storage) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+
+		jwtToken := w.Header().Get("Authorization")
+		if jwtToken == "" {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+
+		user_id, err := token.Compare(jwtToken)
+		if err != nil {
+			w.WriteHeader(http.StatusForbidden)
+			log.Error("error while comparing jwt", logger.Error(err))
+			return
+		}
+
+		fmt.Fprintf(w, "user_id: %d", user_id)
+	}
+}
